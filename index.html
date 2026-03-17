@@ -1,0 +1,31 @@
+
+<!DOCTYPE html>
+<html lang='de'>
+<head>
+<meta charset='UTF-8'>
+<meta name='viewport' content='width=device-width, initial-scale=1.0'>
+<title>Push-Up Tracker PWA</title>
+<link rel='stylesheet' href='style.css'>
+<link rel="manifest" href="manifest.json">
+<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+</head>
+<body>
+<h1>Push-Up Tracker PWA</h1>
+<div id='counter'>0</div>
+<div class='buttons'>
+<button onclick='add(1)'>+1</button>
+<button onclick='add(5)'>+5</button>
+<button onclick='add(10)'>+10</button>
+<button onclick='add(20)'>+20</button>
+<button onclick='reset()'>Reset</button>
+</div>
+<h2>Fortschritt zu 10.000</h2>
+<div class='progress'><div id='bar'></div></div>
+<h2>Dein Verlauf</h2>
+<canvas id='chart'></canvas>
+<script src='script.js'></script>
+<script>
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('service-worker.js'); }
+</script>
+</body>
+</html>
