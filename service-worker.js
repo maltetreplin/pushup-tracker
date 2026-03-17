@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pushups-v7';
+const CACHE_NAME = 'pushups-v6.1';
 const APP_SHELL = [
   './',
   './index.html',
