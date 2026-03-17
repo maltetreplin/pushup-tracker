@@ -1,7 +1,7 @@
 
 // ==== Einstellungen ====
 const TOTAL_GOAL = 10000;
-const TARGET_DATE = new Date('2026-06-14'); // Zieltermin für Prognose (anpassbar)
+const TARGET_DATE = new Date('2026-06-14');
 const MILESTONE_BADGES = [100, 500, 1000, 2500, 5000, 7500, 10000];
 const STREAK_BADGES = [1, 3, 7, 14, 30];
 
@@ -20,7 +20,6 @@ let badgeModal, badgeGrid, closeModalBtn;
 // ==== Helpers ====
 const fmt = n => new Intl.NumberFormat('de-DE').format(n);
 const todayStr = () => new Date().toISOString().slice(0,10);
-const parseDate = s => new Date(s+'T00:00:00');
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
 const dateStr = d => d.toISOString().slice(0,10);
 
@@ -34,12 +33,12 @@ function save(){
 function getSortedDates(){ return Object.keys(history).sort(); }
 
 function currentStreak(){
-  // count consecutive days with >0 from today backwards
   let d = new Date(); d.setHours(0,0,0,0);
   let streak = 0;
-  for(;;){
+  // zähle rückwärts Tage mit >0
+  while (true) {
     const s = dateStr(d);
-    if((history[s]||0) > 0){ streak++; d = addDays(d, -1); }
+    if ((history[s]||0) > 0) { streak++; d = addDays(d, -1); }
     else break;
   }
   return streak;
@@ -47,21 +46,18 @@ function currentStreak(){
 
 function earnedBadges(){
   const earned = { milestones: [], streaks: [] };
-  for(const m of MILESTONE_BADGES){ if(total >= m) earned.milestones.push(m); }
+  for (const m of MILESTONE_BADGES) { if (total >= m) earned.milestones.push(m); }
   const s = currentStreak();
-  for(const t of STREAK_BADGES){ if(s >= t) earned.streaks.push(t); }
+  for (const t of STREAK_BADGES) { if (s >= t) earned.streaks.push(t); }
   return {earned, streak:s};
 }
 
 function updateMiniBadges(){
   const {earned} = earnedBadges();
-  const icons = [];
-  // pick up to 3 most recent badges (prefer milestones, then streaks)
   const ms = earned.milestones.map(m=>`🏆${m}`);
   const ss = earned.streaks.map(t=>`🔥${t}`);
   const merged = ms.concat(ss).slice(-3);
-  for(const b of merged){ icons.push(`<span class=mini>${b}</span>`); }
-  miniBadges.innerHTML = icons.join('');
+  miniBadges.innerHTML = merged.map(b=>`<span class="mini">${b}</span>`).join('');
 }
 
 // ==== Charts (Canvas) ====
@@ -100,7 +96,7 @@ function drawMainChart(){
   drawLine(data, lineDaily, true); drawLine(avg, lineAvg, false);
 }
 
-function weekBounds(d){ // Monday..Sunday around date d
+function weekBounds(d){
   const day=(d.getDay()+6)%7; // Mon=0..Sun=6
   const start = new Date(d); start.setDate(d.getDate()-day); start.setHours(0,0,0,0);
   const end = addDays(start, 6); end.setHours(23,59,59,999);
@@ -130,7 +126,7 @@ function drawWeekChartAndStats(){
   // y labels
   ctx.fillStyle=textColor; ctx.font='12px system-ui,-apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle'; for(let g=0; g<=3; g++){ const val=Math.round((maxY-minY)*g/3+minY); const gy=padT+(H-padT-padB)*g/3; ctx.fillText(String(val), padL-6, gy); }
   // x labels
-  ctx.textAlign='center'; ctx.textBaseline='top'; labels.forEach((lab,i)=>{ const dd=new Date(lab); const s=['Mo','Di','Mi','Do','Fr','Sa','So'][i]; ctx.fillText(s, x(i), H-padB+4); });
+  ctx.textAlign='center'; ctx.textBaseline='top'; const wd=['Mo','Di','Mi','Do','Fr','Sa','So']; labels.forEach((_,i)=>{ ctx.fillText(wd[i], x(i), H-padB+4); });
   // line
   ctx.strokeStyle=lineDaily; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x(0), y(data[0]||0)); for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(data[i]||0)); } ctx.stroke();
   ctx.fillStyle = lineDaily+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill();
@@ -139,13 +135,14 @@ function drawWeekChartAndStats(){
   const weekSum = data.reduce((a,b)=>a+b,0);
   weekSumEl.textContent = fmt(weekSum);
 
-  // Forecast to TARGET_DATE
+  // Forecast
   const now = new Date(); now.setHours(0,0,0,0);
   const remainingToGoal = Math.max(0, TOTAL_GOAL - total);
   const daysLeft = Math.ceil((TARGET_DATE - now)/(1000*60*60*24));
   let forecastText;
-  if(daysLeft <= 0){ forecastText = remainingToGoal===0 ? 'Ziel erreicht' : `Ziel verpasst (Rest ${fmt(remainingToGoal)})`; }
-  else {
+  if(daysLeft <= 0){
+    forecastText = remainingToGoal===0 ? 'Ziel erreicht' : `Ziel verpasst (Rest ${fmt(remainingToGoal)})`;
+  } else {
     const neededPerDay = Math.ceil(remainingToGoal / daysLeft);
     forecastText = remainingToGoal===0 ? 'Ziel erreicht' : `${fmt(neededPerDay)}/Tag nötig`;
   }
@@ -153,7 +150,7 @@ function drawWeekChartAndStats(){
 
   // Recommendation for tomorrow
   const needed = daysLeft>0 ? Math.ceil(remainingToGoal / daysLeft) : 0;
-  const todayNeeded = Math.max(0, needed); // simple baseline
+  const todayNeeded = Math.max(0, needed);
   recommendEl.textContent = needed>0 ? `${fmt(todayNeeded)}+` : 'Locker weiter!';
 }
 
@@ -191,8 +188,7 @@ function resetAll(){
 function exportCSV(){
   const lines = ['Datum;Liegestuetze'];
   for(const k of getSortedDates()){ lines.push(`${k};${history[k]}`); }
-  const blob = new Blob([lines.join('
-')], {type:'text/csv;charset=utf-8;'});
+  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download='pushups_history.csv'; a.click(); URL.revokeObjectURL(url);
 }
@@ -228,12 +224,20 @@ function badgeDef(){
   return defs;
 }
 function renderBadgesModal(){
-  const {earned, streak} = earnedBadges();
+  const {earned} = earnedBadges();
   if(!badgeGrid) return;
   const defs = badgeDef();
   badgeGrid.innerHTML = defs.map(b=>{
     const unlocked = (b.type==='milestone'? earned.milestones.includes(b.value) : earned.streaks.includes(b.value));
-    return `<div class="badge ${unlocked?'':'locked'}"><div class="icon">${b.icon}</div><div class="meta"><div class="title">${b.title}</div><div class="desc">${b.desc}</div></div></div>`;
+    return (
+      `<div class="badge ${unlocked?'':'locked'}">
+        <div class="icon">${b.icon}</div>
+        <div class="meta">
+          <div class="title">${b.title}</div>
+          <div class="desc">${b.desc}</div>
+        </div>
+      </div>`
+    );
   }).join('');
 }
 
