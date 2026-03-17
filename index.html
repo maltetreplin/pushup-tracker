@@ -1,31 +1,59 @@
 
 <!DOCTYPE html>
-<html lang='de'>
+<html lang="de">
 <head>
-<meta charset='UTF-8'>
-<meta name='viewport' content='width=device-width, initial-scale=1.0'>
-<title>Push-Up Tracker PWA</title>
-<link rel='stylesheet' href='style.css'>
-<link rel="manifest" href="manifest.json">
-<script src='https://cdn.jsdelivr.net/npm/chart.js'></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Push-Up Tracker</title>
+  <meta name="theme-color" content="#4caf50" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="style.css" />
+  <script defer src="chart.umd.js"></script>
+  <script defer src="script.js"></script>
 </head>
 <body>
-<h1>Push-Up Tracker PWA</h1>
-<div id='counter'>0</div>
-<div class='buttons'>
-<button onclick='add(1)'>+1</button>
-<button onclick='add(5)'>+5</button>
-<button onclick='add(10)'>+10</button>
-<button onclick='add(20)'>+20</button>
-<button onclick='reset()'>Reset</button>
-</div>
-<h2>Fortschritt zu 10.000</h2>
-<div class='progress'><div id='bar'></div></div>
-<h2>Dein Verlauf</h2>
-<canvas id='chart'></canvas>
-<script src='script.js'></script>
-<script>
-if('serviceWorker' in navigator){ navigator.serviceWorker.register('service-worker.js'); }
-</script>
+  <header>
+    <h1>Push-Up Tracker</h1>
+    <button id="installBtn" hidden>Installieren</button>
+  </header>
+
+  <main>
+    <section class="counter">
+      <div id="total" class="big">0</div>
+      <div class="buttons">
+        <button data-add="1">+1</button>
+        <button data-add="5">+5</button>
+        <button data-add="10">+10</button>
+        <button data-add="20">+20</button>
+        <button id="resetBtn" class="warn">Reset</button>
+      </div>
+      <div class="target">
+        Tägliches Ziel: <input id="dailyGoal" type="number" min="1" value="111" />
+        <span id="dailyStatus"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Fortschritt zu 10.000</h2>
+      <div class="progress"><div id="bar"></div></div>
+      <p><span id="remaining">10000</span> verbleibend</p>
+    </section>
+
+    <section>
+      <h2>Dein Verlauf</h2>
+      <canvas id="chart" height="140"></canvas>
+    </section>
+  </main>
+
+  <footer>
+    <small>Funktioniert offline. Zu deinem Homescreen hinzufügen für App‑Feeling.</small>
+  </footer>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+    }
+  </script>
 </body>
 </html>
