@@ -37,7 +37,7 @@ function currentStreak(){
   let streak = 0;
   while (true) {
     const s = dateStr(d);
-    if ((history[s]||0) > 0) { streak++; d = addDays(d, -1); }
+    if ((Number(history[s])||0) > 0) { streak++; d = addDays(d, -1); }
     else break;
   }
   return streak;
@@ -64,7 +64,7 @@ function movingAverage(arr, w=7){ const out=[]; for(let i=0;i<arr.length;i++){ c
 
 function drawMainChart(){
   const labels = getSortedDates();
-  const data = labels.map(k=>history[k]);
+  const data = labels.map(k=> Number(history[k])||0 ); // cast to numbers
   const avg = movingAverage(data, 7);
   const canvas = chartEl; const ctx = canvas.getContext('2d');
   const W = canvas.width = canvas.clientWidth; const H = canvas.height;
@@ -76,28 +76,36 @@ function drawMainChart(){
   const lineAvg = '#ff9800';
   const padL = 40, padR = 14, padT = 12, padB = 26;
   const maxY = Math.max(10, ...data, 10), minY = 0;
-  const n = Math.max(1, data.length);
-  const x = i => padL + (W - padL - padR) * (n==1?0.5:(i/(n-1)));
+  const n = data.length;
+  const x = i => padL + (W - padL - padR) * (n<=1?0.5:(i/(n-1)));
   const y = v => H - padB - (H - padT - padB) * ((v-minY)/(maxY-minY||1));
   // grid
   ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
   for(let g=0; g<=4; g++){ const gy = padT + (H-padT-padB)*g/4; ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W-padR, gy); ctx.stroke(); }
   // axes
   ctx.strokeStyle = textColor; ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
-  // y labels (NEU: oben max -> unten min)
+  // y labels (top -> bottom)
   ctx.fillStyle = textColor; ctx.font = '12px system-ui, -apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle';
   for (let g = 0; g <= 4; g++) {
-    const frac = g / 4; // 0..1 von oben nach unten
-    const val  = Math.round(maxY - (maxY - minY) * frac);
-    const gy   = padT + (H - padT - padB) * frac;
-    ctx.fillText(String(val), padL - 6, gy);
+    const frac = g / 4; const val = Math.round(maxY - (maxY - minY) * frac); const gy = padT + (H - padT - padB) * frac; ctx.fillText(String(val), padL - 6, gy);
   }
   // x labels
   ctx.textAlign='center'; ctx.textBaseline='top';
   labels.forEach((lab,i)=>{ if(n<=12 || i%Math.ceil(n/12)==0){ ctx.fillText(lab.slice(5), x(i), H-padB+6); } });
-  // lines
-  function drawLine(arr, color, fill=false){ if(n===0) return; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x(0), y(arr[0]||0)); for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(arr[i]||0)); } ctx.stroke(); if(fill){ ctx.fillStyle=color+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill(); } }
-  drawLine(data, lineDaily, true); drawLine(avg, lineAvg, false);
+  
+  function drawPoint(px, py, color){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI*2); ctx.fill(); }
+  function drawLine(arr, color, fill=false){
+    if(n===0) return;
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath();
+    ctx.moveTo(x(0), y(arr[0]||0));
+    for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(arr[i]||0)); }
+    // Wenn nur 1 Punkt vorhanden, zusätzlich Punkt zeichnen
+    if(n===1){ ctx.stroke(); drawPoint(x(0), y(arr[0]||0), color); return; }
+    ctx.stroke();
+    if(fill){ ctx.fillStyle=color+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill(); }
+  }
+  drawLine(data, lineDaily, true);
+  drawLine(avg, lineAvg, false);
 }
 
 function weekBounds(d){
@@ -111,7 +119,7 @@ function drawWeekChartAndStats(){
   const today = new Date(); today.setHours(0,0,0,0);
   const {start} = weekBounds(today);
   const labels = []; const data = [];
-  for(let i=0;i<7;i++){ const d = addDays(start, i); const s = dateStr(d); labels.push(s); data.push(history[s]||0); }
+  for(let i=0;i<7;i++){ const d = addDays(start, i); const s = dateStr(d); labels.push(s); data.push(Number(history[s])||0); }
   const canvas = weekChartEl; const ctx = canvas.getContext('2d');
   const W = canvas.width = canvas.clientWidth; const H = canvas.height;
   ctx.clearRect(0,0,W,H);
@@ -122,24 +130,25 @@ function drawWeekChartAndStats(){
   const padL = 36, padR = 10, padT = 8, padB = 22;
   const maxY = Math.max(10, ...data, 10), minY = 0;
   const n = data.length;
-  const x = i => padL + (W - padL - padR) * (n==1?0.5:(i/(n-1)));
+  const x = i => padL + (W - padL - padR) * (n<=1?0.5:(i/(n-1)));
   const y = v => H - padB - (H - padT - padB) * ((v-minY)/(maxY-minY||1));
   // grid & axes
   ctx.strokeStyle = gridColor; ctx.lineWidth=1; for(let g=0; g<=3; g++){ const gy=padT+(H-padT-padB)*g/3; ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(W-padR,gy); ctx.stroke(); }
   ctx.strokeStyle = textColor; ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
-  // y labels (NEU: oben max -> unten min)
+  // y labels (top -> bottom)
   ctx.fillStyle=textColor; ctx.font='12px system-ui,-apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle';
-  for (let g = 0; g <= 3; g++) {
-    const frac = g / 3;
-    const val  = Math.round(maxY - (maxY - minY) * frac);
-    const gy   = padT + (H - padT - padB) * frac;
-    ctx.fillText(String(val), padL - 6, gy);
-  }
+  for (let g = 0; g <= 3; g++) { const frac = g/3; const val = Math.round(maxY - (maxY - minY) * frac); const gy = padT + (H - padT - padB) * frac; ctx.fillText(String(val), padL - 6, gy); }
   // x labels
   ctx.textAlign='center'; ctx.textBaseline='top'; const wd=['Mo','Di','Mi','Do','Fr','Sa','So']; labels.forEach((_,i)=>{ ctx.fillText(wd[i], x(i), H-padB+4); });
-  // line
-  ctx.strokeStyle=lineDaily; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x(0), y(data[0]||0)); for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(data[i]||0)); } ctx.stroke();
-  ctx.fillStyle = lineDaily+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill();
+  // line + point fallback
+  function drawPoint(px, py, color){ ctx.fillStyle=color; ctx.beginPath(); ctx.arc(px, py, 3.5, 0, Math.PI*2); ctx.fill(); }
+  ctx.strokeStyle=lineDaily; ctx.lineWidth=2; ctx.beginPath();
+  ctx.moveTo(x(0), y(data[0]||0));
+  for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(data[i]||0)); }
+  if(n===1){ ctx.stroke(); drawPoint(x(0), y(data[0]||0), lineDaily); }
+  else {
+    ctx.stroke(); ctx.fillStyle = lineDaily+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill();
+  }
 
   // stats
   const weekSum = data.reduce((a,b)=>a+b,0);
@@ -171,7 +180,7 @@ function updateUI(){
   barEl.style.width = pct+"%";
   remainingEl.textContent = fmt(Math.max(0, TOTAL_GOAL-total));
   const d = todayStr();
-  const todayCount = history[d]||0;
+  const todayCount = Number(history[d])||0;
   const diff = dailyGoal - todayCount;
   dailyStatusEl.textContent = diff>0 ? `${fmt(diff)} heute noch` : `Ziel erreicht (+${fmt(Math.abs(diff))})`;
   dailyStatusEl.style.color = diff>0 ? '#cc0000' : '#1b5e20';
@@ -184,7 +193,7 @@ function updateUI(){
 function add(n){
   const d = todayStr();
   total += n;
-  history[d] = (history[d]||0) + n;
+  history[d] = (Number(history[d])||0) + n; // ensure numeric accumulation
   save();
   updateUI();
 }
@@ -197,7 +206,7 @@ function resetAll(){
 // === CSV Export ===
 function exportCSV(){
   const lines = ['Datum;Liegestuetze'];
-  for(const k of getSortedDates()){ lines.push(`${k};${history[k]}`); }
+  for(const k of getSortedDates()){ lines.push(`${k};${Number(history[k])||0}`); }
   const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href=url; a.download='pushups_history.csv'; a.click(); URL.revokeObjectURL(url);
@@ -238,7 +247,7 @@ function renderBadgesModal(){
   if(!badgeGrid) return;
   const defs = badgeDef();
   badgeGrid.innerHTML = defs.map(b=>(
-      `<div class=\"badge ${ (b.type==='milestone'? earned.milestones.includes(b.value) : earned.streaks.includes(b.value)) ? '' : 'locked' }\">\n`+
+      `<div class=\"badge ${ (b.type==='milestone'? (earned.milestones.includes(b.value)) : (earned.streaks.includes(b.value)) ) ? '' : 'locked' }\">\n`+
       `  <div class=\"icon\">${b.icon}</div>\n`+
       `  <div class=\"meta\">\n`+
       `    <div class=\"title\">${b.title}</div>\n`+
