@@ -35,7 +35,6 @@ function getSortedDates(){ return Object.keys(history).sort(); }
 function currentStreak(){
   let d = new Date(); d.setHours(0,0,0,0);
   let streak = 0;
-  // zähle rückwärts Tage mit >0
   while (true) {
     const s = dateStr(d);
     if ((history[s]||0) > 0) { streak++; d = addDays(d, -1); }
@@ -54,10 +53,10 @@ function earnedBadges(){
 
 function updateMiniBadges(){
   const {earned} = earnedBadges();
-  const ms = earned.milestones.map(m=>`🏆${m}`);
-  const ss = earned.streaks.map(t=>`🔥${t}`);
+  const ms = earned.milestones.map(m=>`\uD83C\uDFC6${m}`);
+  const ss = earned.streaks.map(t=>`\uD83D\uDD25${t}`);
   const merged = ms.concat(ss).slice(-3);
-  miniBadges.innerHTML = merged.map(b=>`<span class="mini">${b}</span>`).join('');
+  miniBadges.innerHTML = merged.map(b=>`<span class=\"mini\">${b}</span>`).join('');
 }
 
 // ==== Charts (Canvas) ====
@@ -85,9 +84,14 @@ function drawMainChart(){
   for(let g=0; g<=4; g++){ const gy = padT + (H-padT-padB)*g/4; ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W-padR, gy); ctx.stroke(); }
   // axes
   ctx.strokeStyle = textColor; ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
-  // y labels
+  // y labels (NEU: oben max -> unten min)
   ctx.fillStyle = textColor; ctx.font = '12px system-ui, -apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle';
-  for(let g=0; g<=4; g++){ const val=Math.round((maxY-minY)*g/4 + minY); const gy=padT+(H-padT-padB)*g/4; ctx.fillText(String(val), padL-6, gy); }
+  for (let g = 0; g <= 4; g++) {
+    const frac = g / 4; // 0..1 von oben nach unten
+    const val  = Math.round(maxY - (maxY - minY) * frac);
+    const gy   = padT + (H - padT - padB) * frac;
+    ctx.fillText(String(val), padL - 6, gy);
+  }
   // x labels
   ctx.textAlign='center'; ctx.textBaseline='top';
   labels.forEach((lab,i)=>{ if(n<=12 || i%Math.ceil(n/12)==0){ ctx.fillText(lab.slice(5), x(i), H-padB+6); } });
@@ -105,7 +109,7 @@ function weekBounds(d){
 
 function drawWeekChartAndStats(){
   const today = new Date(); today.setHours(0,0,0,0);
-  const {start, end} = weekBounds(today);
+  const {start} = weekBounds(today);
   const labels = []; const data = [];
   for(let i=0;i<7;i++){ const d = addDays(start, i); const s = dateStr(d); labels.push(s); data.push(history[s]||0); }
   const canvas = weekChartEl; const ctx = canvas.getContext('2d');
@@ -123,8 +127,14 @@ function drawWeekChartAndStats(){
   // grid & axes
   ctx.strokeStyle = gridColor; ctx.lineWidth=1; for(let g=0; g<=3; g++){ const gy=padT+(H-padT-padB)*g/3; ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(W-padR,gy); ctx.stroke(); }
   ctx.strokeStyle = textColor; ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
-  // y labels
-  ctx.fillStyle=textColor; ctx.font='12px system-ui,-apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle'; for(let g=0; g<=3; g++){ const val=Math.round((maxY-minY)*g/3+minY); const gy=padT+(H-padT-padB)*g/3; ctx.fillText(String(val), padL-6, gy); }
+  // y labels (NEU: oben max -> unten min)
+  ctx.fillStyle=textColor; ctx.font='12px system-ui,-apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle';
+  for (let g = 0; g <= 3; g++) {
+    const frac = g / 3;
+    const val  = Math.round(maxY - (maxY - minY) * frac);
+    const gy   = padT + (H - padT - padB) * frac;
+    ctx.fillText(String(val), padL - 6, gy);
+  }
   // x labels
   ctx.textAlign='center'; ctx.textBaseline='top'; const wd=['Mo','Di','Mi','Do','Fr','Sa','So']; labels.forEach((_,i)=>{ ctx.fillText(wd[i], x(i), H-padB+4); });
   // line
@@ -219,26 +229,23 @@ function toggleTheme(){ const cur = themePref; const next = cur==='dark' ? 'ligh
 // === Badges UI ===
 function badgeDef(){
   const defs = [];
-  for(const m of MILESTONE_BADGES){ defs.push({id:'M'+m, type:'milestone', value:m, icon:'🏆', title:`${m} Gesamt`, desc:`Erreiche insgesamt ${m} Liegestütze.`}); }
-  for(const s of STREAK_BADGES){ defs.push({id:'S'+s, type:'streak', value:s, icon:'🔥', title:`${s}-Tage-Streak`, desc:`An ${s} Tagen in Folge Liegestütze.`}); }
+  for(const m of MILESTONE_BADGES){ defs.push({id:'M'+m, type:'milestone', value:m, icon:'\uD83C\uDFC6', title:`${m} Gesamt`, desc:`Erreiche insgesamt ${m} Liegestütze.`}); }
+  for(const s of STREAK_BADGES){ defs.push({id:'S'+s, type:'streak', value:s, icon:'\uD83D\uDD25', title:`${s}-Tage-Streak`, desc:`An ${s} Tagen in Folge Liegestütze.`}); }
   return defs;
 }
 function renderBadgesModal(){
   const {earned} = earnedBadges();
   if(!badgeGrid) return;
   const defs = badgeDef();
-  badgeGrid.innerHTML = defs.map(b=>{
-    const unlocked = (b.type==='milestone'? earned.milestones.includes(b.value) : earned.streaks.includes(b.value));
-    return (
-      `<div class="badge ${unlocked?'':'locked'}">
-        <div class="icon">${b.icon}</div>
-        <div class="meta">
-          <div class="title">${b.title}</div>
-          <div class="desc">${b.desc}</div>
-        </div>
-      </div>`
-    );
-  }).join('');
+  badgeGrid.innerHTML = defs.map(b=>(
+      `<div class=\"badge ${ (b.type==='milestone'? earned.milestones.includes(b.value) : earned.streaks.includes(b.value)) ? '' : 'locked' }\">\n`+
+      `  <div class=\"icon\">${b.icon}</div>\n`+
+      `  <div class=\"meta\">\n`+
+      `    <div class=\"title\">${b.title}</div>\n`+
+      `    <div class=\"desc\">${b.desc}</div>\n`+
+      `  </div>\n`+
+      `</div>`
+  )).join('');
 }
 
 // ==== Init ====
