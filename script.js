@@ -1,87 +1,290 @@
 
-// State
+// ==== Einstellungen ====
 const TOTAL_GOAL = 10000;
+const TARGET_DATE = new Date('2026-06-14'); // Zieltermin für Prognose (anpassbar)
+const MILESTONE_BADGES = [100, 500, 1000, 2500, 5000, 7500, 10000];
+const STREAK_BADGES = [1, 3, 7, 14, 30];
+
+// ==== State ====
 let total = Number(localStorage.getItem('pushups')||0);
 let history = JSON.parse(localStorage.getItem('history')||"{}");
-let dailyGoalInput, dailyStatusEl, totalEl, barEl, remainingEl, chartEl, installBtn;
 let dailyGoal = Number(localStorage.getItem('dailyGoal')||111);
-let chart;
+let themePref = localStorage.getItem('theme')||'auto';
 
-function today(){ return new Date().toISOString().slice(0,10); }
+// ==== Elements ====
+let dailyGoalInput, dailyStatusEl, totalEl, barEl, remainingEl, chartEl, weekChartEl;
+let installBtn, exportBtn, themeBtn, badgesBtn, backupBtn, restoreBtn, restoreInput, miniBadges;
+let weekSumEl, forecastEl, recommendEl;
+let badgeModal, badgeGrid, closeModalBtn;
+
+// ==== Helpers ====
+const fmt = n => new Intl.NumberFormat('de-DE').format(n);
+const todayStr = () => new Date().toISOString().slice(0,10);
+const parseDate = s => new Date(s+'T00:00:00');
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+const dateStr = d => d.toISOString().slice(0,10);
 
 function save(){
   localStorage.setItem('pushups', total);
   localStorage.setItem('history', JSON.stringify(history));
   localStorage.setItem('dailyGoal', dailyGoal);
+  localStorage.setItem('theme', themePref);
 }
 
+function getSortedDates(){ return Object.keys(history).sort(); }
+
+function currentStreak(){
+  // count consecutive days with >0 from today backwards
+  let d = new Date(); d.setHours(0,0,0,0);
+  let streak = 0;
+  for(;;){
+    const s = dateStr(d);
+    if((history[s]||0) > 0){ streak++; d = addDays(d, -1); }
+    else break;
+  }
+  return streak;
+}
+
+function earnedBadges(){
+  const earned = { milestones: [], streaks: [] };
+  for(const m of MILESTONE_BADGES){ if(total >= m) earned.milestones.push(m); }
+  const s = currentStreak();
+  for(const t of STREAK_BADGES){ if(s >= t) earned.streaks.push(t); }
+  return {earned, streak:s};
+}
+
+function updateMiniBadges(){
+  const {earned} = earnedBadges();
+  const icons = [];
+  // pick up to 3 most recent badges (prefer milestones, then streaks)
+  const ms = earned.milestones.map(m=>`🏆${m}`);
+  const ss = earned.streaks.map(t=>`🔥${t}`);
+  const merged = ms.concat(ss).slice(-3);
+  for(const b of merged){ icons.push(`<span class=mini>${b}</span>`); }
+  miniBadges.innerHTML = icons.join('');
+}
+
+// ==== Charts (Canvas) ====
+function movingAverage(arr, w=7){ const out=[]; for(let i=0;i<arr.length;i++){ const s=Math.max(0,i-w+1), e=i+1; const slice=arr.slice(s,e); out.push(slice.reduce((a,b)=>a+b,0)/slice.length); } return out; }
+
+function drawMainChart(){
+  const labels = getSortedDates();
+  const data = labels.map(k=>history[k]);
+  const avg = movingAverage(data, 7);
+  const canvas = chartEl; const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.clientWidth; const H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const styles = getComputedStyle(document.documentElement);
+  const gridColor = (styles.getPropertyValue('--grid')||'#eee').trim();
+  const textColor = (styles.getPropertyValue('--muted')||'#666').trim();
+  const lineDaily = '#1976d2';
+  const lineAvg = '#ff9800';
+  const padL = 40, padR = 14, padT = 12, padB = 26;
+  const maxY = Math.max(10, ...data, 10), minY = 0;
+  const n = Math.max(1, data.length);
+  const x = i => padL + (W - padL - padR) * (n==1?0.5:(i/(n-1)));
+  const y = v => H - padB - (H - padT - padB) * ((v-minY)/(maxY-minY||1));
+  // grid
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+  for(let g=0; g<=4; g++){ const gy = padT + (H-padT-padB)*g/4; ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(W-padR, gy); ctx.stroke(); }
+  // axes
+  ctx.strokeStyle = textColor; ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
+  // y labels
+  ctx.fillStyle = textColor; ctx.font = '12px system-ui, -apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle';
+  for(let g=0; g<=4; g++){ const val=Math.round((maxY-minY)*g/4 + minY); const gy=padT+(H-padT-padB)*g/4; ctx.fillText(String(val), padL-6, gy); }
+  // x labels
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  labels.forEach((lab,i)=>{ if(n<=12 || i%Math.ceil(n/12)==0){ ctx.fillText(lab.slice(5), x(i), H-padB+6); } });
+  // lines
+  function drawLine(arr, color, fill=false){ if(n===0) return; ctx.strokeStyle=color; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x(0), y(arr[0]||0)); for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(arr[i]||0)); } ctx.stroke(); if(fill){ ctx.fillStyle=color+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill(); } }
+  drawLine(data, lineDaily, true); drawLine(avg, lineAvg, false);
+}
+
+function weekBounds(d){ // Monday..Sunday around date d
+  const day=(d.getDay()+6)%7; // Mon=0..Sun=6
+  const start = new Date(d); start.setDate(d.getDate()-day); start.setHours(0,0,0,0);
+  const end = addDays(start, 6); end.setHours(23,59,59,999);
+  return {start, end};
+}
+
+function drawWeekChartAndStats(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const {start, end} = weekBounds(today);
+  const labels = []; const data = [];
+  for(let i=0;i<7;i++){ const d = addDays(start, i); const s = dateStr(d); labels.push(s); data.push(history[s]||0); }
+  const canvas = weekChartEl; const ctx = canvas.getContext('2d');
+  const W = canvas.width = canvas.clientWidth; const H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const styles = getComputedStyle(document.documentElement);
+  const gridColor = (styles.getPropertyValue('--grid')||'#eee').trim();
+  const textColor = (styles.getPropertyValue('--muted')||'#666').trim();
+  const lineDaily = '#1976d2';
+  const padL = 36, padR = 10, padT = 8, padB = 22;
+  const maxY = Math.max(10, ...data, 10), minY = 0;
+  const n = data.length;
+  const x = i => padL + (W - padL - padR) * (n==1?0.5:(i/(n-1)));
+  const y = v => H - padB - (H - padT - padB) * ((v-minY)/(maxY-minY||1));
+  // grid & axes
+  ctx.strokeStyle = gridColor; ctx.lineWidth=1; for(let g=0; g<=3; g++){ const gy=padT+(H-padT-padB)*g/3; ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(W-padR,gy); ctx.stroke(); }
+  ctx.strokeStyle = textColor; ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, H-padB); ctx.lineTo(W-padR, H-padB); ctx.stroke();
+  // y labels
+  ctx.fillStyle=textColor; ctx.font='12px system-ui,-apple-system'; ctx.textAlign='right'; ctx.textBaseline='middle'; for(let g=0; g<=3; g++){ const val=Math.round((maxY-minY)*g/3+minY); const gy=padT+(H-padT-padB)*g/3; ctx.fillText(String(val), padL-6, gy); }
+  // x labels
+  ctx.textAlign='center'; ctx.textBaseline='top'; labels.forEach((lab,i)=>{ const dd=new Date(lab); const s=['Mo','Di','Mi','Do','Fr','Sa','So'][i]; ctx.fillText(s, x(i), H-padB+4); });
+  // line
+  ctx.strokeStyle=lineDaily; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo(x(0), y(data[0]||0)); for(let i=1;i<n;i++){ ctx.lineTo(x(i), y(data[i]||0)); } ctx.stroke();
+  ctx.fillStyle = lineDaily+'26'; ctx.lineTo(x(n-1), H-padB); ctx.lineTo(x(0), H-padB); ctx.closePath(); ctx.fill();
+
+  // stats
+  const weekSum = data.reduce((a,b)=>a+b,0);
+  weekSumEl.textContent = fmt(weekSum);
+
+  // Forecast to TARGET_DATE
+  const now = new Date(); now.setHours(0,0,0,0);
+  const remainingToGoal = Math.max(0, TOTAL_GOAL - total);
+  const daysLeft = Math.ceil((TARGET_DATE - now)/(1000*60*60*24));
+  let forecastText;
+  if(daysLeft <= 0){ forecastText = remainingToGoal===0 ? 'Ziel erreicht' : `Ziel verpasst (Rest ${fmt(remainingToGoal)})`; }
+  else {
+    const neededPerDay = Math.ceil(remainingToGoal / daysLeft);
+    forecastText = remainingToGoal===0 ? 'Ziel erreicht' : `${fmt(neededPerDay)}/Tag nötig`;
+  }
+  forecastEl.textContent = forecastText;
+
+  // Recommendation for tomorrow
+  const needed = daysLeft>0 ? Math.ceil(remainingToGoal / daysLeft) : 0;
+  const todayNeeded = Math.max(0, needed); // simple baseline
+  recommendEl.textContent = needed>0 ? `${fmt(todayNeeded)}+` : 'Locker weiter!';
+}
+
+// ==== UI & Interactions ====
 function updateUI(){
-  totalEl.textContent = total;
+  totalEl.textContent = fmt(total);
   const pct = Math.min(100, Math.round(total/TOTAL_GOAL*100));
   barEl.style.width = pct+"%";
-  remainingEl.textContent = Math.max(0, TOTAL_GOAL-total);
-  // daily goal status
-  const d = today();
+  remainingEl.textContent = fmt(Math.max(0, TOTAL_GOAL-total));
+  const d = todayStr();
   const todayCount = history[d]||0;
   const diff = dailyGoal - todayCount;
-  dailyStatusEl.textContent = diff>0 ? `${diff} heute noch` : `Ziel erreicht (+${Math.abs(diff)})`;
+  dailyStatusEl.textContent = diff>0 ? `${fmt(diff)} heute noch` : `Ziel erreicht (+${fmt(Math.abs(diff))})`;
   dailyStatusEl.style.color = diff>0 ? '#cc0000' : '#1b5e20';
-  drawChart();
+  drawMainChart();
+  drawWeekChartAndStats();
+  updateMiniBadges();
+  renderBadgesModal();
 }
 
 function add(n){
+  const d = todayStr();
   total += n;
-  const d = today();
   history[d] = (history[d]||0) + n;
   save();
   updateUI();
 }
 
-function reset(){
+function resetAll(){
   if(!confirm('Alles zurücksetzen?')) return;
   total = 0; history = {}; save(); updateUI();
 }
 
-function drawChart(){
-  const labels = Object.keys(history).sort();
-  const data = labels.map(k=>history[k]);
-  const ctx = chartEl.getContext('2d');
-  if(window.Chart===undefined){ console.warn('Chart.js nicht geladen'); return; }
-  if(chart) chart.destroy();
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: { labels, datasets:[{ label:'Liegestütze pro Tag', data, borderColor:'#1976d2', backgroundColor:'rgba(25,118,210,.15)', tension:.2, fill:true }] },
-    options: { scales: { y: { beginAtZero: true } }, plugins:{ legend:{ display:false } } }
-  });
+// === CSV Export ===
+function exportCSV(){
+  const lines = ['Datum;Liegestuetze'];
+  for(const k of getSortedDates()){ lines.push(`${k};${history[k]}`); }
+  const blob = new Blob([lines.join('
+')], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='pushups_history.csv'; a.click(); URL.revokeObjectURL(url);
 }
 
+// === Backup / Restore (.pushups) ===
+function makeBackup(){
+  const payload = { total, history, dailyGoal, theme: themePref, awards: earnedBadges() };
+  const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='pushups.backup'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+}
+async function restoreBackup(file){
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(!data || typeof data!=='object') throw new Error('Ungültige Datei');
+    if(data.total!=null) total = Number(data.total)||0;
+    if(data.history) history = data.history;
+    if(data.dailyGoal!=null) dailyGoal = Number(data.dailyGoal)||111;
+    if(data.theme) themePref = data.theme;
+    save(); updateUI(); alert('Backup wiederhergestellt.');
+  }catch(e){ alert('Wiederherstellung fehlgeschlagen: '+e.message); }
+}
+
+// === Theme ===
+function setTheme(mode){ themePref=mode; save(); document.documentElement.setAttribute('data-theme', mode==='auto' ? 'auto' : mode); themeBtn.textContent = mode==='dark' ? '☀️' : '🌙'; }
+function toggleTheme(){ const cur = themePref; const next = cur==='dark' ? 'light' : cur==='light' ? 'auto' : 'dark'; setTheme(next); }
+
+// === Badges UI ===
+function badgeDef(){
+  const defs = [];
+  for(const m of MILESTONE_BADGES){ defs.push({id:'M'+m, type:'milestone', value:m, icon:'🏆', title:`${m} Gesamt`, desc:`Erreiche insgesamt ${m} Liegestütze.`}); }
+  for(const s of STREAK_BADGES){ defs.push({id:'S'+s, type:'streak', value:s, icon:'🔥', title:`${s}-Tage-Streak`, desc:`An ${s} Tagen in Folge Liegestütze.`}); }
+  return defs;
+}
+function renderBadgesModal(){
+  const {earned, streak} = earnedBadges();
+  if(!badgeGrid) return;
+  const defs = badgeDef();
+  badgeGrid.innerHTML = defs.map(b=>{
+    const unlocked = (b.type==='milestone'? earned.milestones.includes(b.value) : earned.streaks.includes(b.value));
+    return `<div class="badge ${unlocked?'':'locked'}"><div class="icon">${b.icon}</div><div class="meta"><div class="title">${b.title}</div><div class="desc">${b.desc}</div></div></div>`;
+  }).join('');
+}
+
+// ==== Init ====
 function init(){
+  // elements
   totalEl = document.getElementById('total');
   barEl = document.getElementById('bar');
   remainingEl = document.getElementById('remaining');
   chartEl = document.getElementById('chart');
+  weekChartEl = document.getElementById('weekChart');
   dailyGoalInput = document.getElementById('dailyGoal');
   dailyStatusEl = document.getElementById('dailyStatus');
   installBtn = document.getElementById('installBtn');
+  exportBtn = document.getElementById('exportBtn');
+  themeBtn = document.getElementById('themeBtn');
+  badgesBtn = document.getElementById('badgesBtn');
+  backupBtn = document.getElementById('backupBtn');
+  restoreBtn = document.getElementById('restoreBtn');
+  restoreInput = document.getElementById('restoreInput');
+  miniBadges = document.getElementById('miniBadges');
+  weekSumEl = document.getElementById('weekSum');
+  forecastEl = document.getElementById('forecast');
+  recommendEl = document.getElementById('recommend');
+  badgeModal = document.getElementById('badgeModal');
+  badgeGrid = document.getElementById('badgeGrid');
+  closeModalBtn = document.getElementById('closeModal');
 
+  // listeners
   document.querySelectorAll('[data-add]').forEach(btn=> btn.addEventListener('click', ()=> add(Number(btn.dataset.add))));
-  document.getElementById('resetBtn').addEventListener('click', reset);
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+  exportBtn.addEventListener('click', exportCSV);
+  backupBtn.addEventListener('click', makeBackup);
+  restoreBtn.addEventListener('click', ()=> restoreInput.click());
+  restoreInput.addEventListener('change', (e)=>{ const f = e.target.files[0]; if(f) restoreBackup(f); e.target.value=''; });
+  themeBtn.addEventListener('click', toggleTheme);
+  badgesBtn.addEventListener('click', ()=>{ badgeModal.hidden=false; });
+  closeModalBtn.addEventListener('click', ()=>{ badgeModal.hidden=true; });
+  badgeModal.addEventListener('click', (e)=>{ if(e.target===badgeModal) badgeModal.hidden=true; });
+
+  // theme init
+  setTheme(themePref);
+
+  // first render
   dailyGoalInput.value = dailyGoal;
   dailyGoalInput.addEventListener('change', ()=>{ dailyGoal = Math.max(1, Number(dailyGoalInput.value)||111); save(); updateUI(); });
 
   updateUI();
 }
 
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e)=>{
-  e.preventDefault();
-  deferredPrompt = e;
-  installBtn.hidden = false;
-  installBtn.addEventListener('click', async ()=>{
-    installBtn.hidden = true;
-    await deferredPrompt.prompt();
-    deferredPrompt = null;
-  });
-});
+// Install prompt (Chrome/Edge)
+let deferredPrompt; window.addEventListener('beforeinstallprompt', (e)=>{ e.preventDefault(); deferredPrompt=e; installBtn.hidden=false; installBtn.addEventListener('click', async ()=>{ installBtn.hidden=true; await deferredPrompt.prompt(); deferredPrompt=null; }); });
 
 window.addEventListener('load', init);

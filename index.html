@@ -1,6 +1,6 @@
 
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="auto">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,13 +9,23 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="stylesheet" href="style.css" />
-  <script defer src="chart.umd.js"></script>
   <script defer src="script.js"></script>
 </head>
 <body>
   <header>
-    <h1>Push-Up Tracker</h1>
-    <button id="installBtn" hidden>Installieren</button>
+    <div class="left">
+      <h1>Push-Up Tracker</h1>
+      <span id="miniBadges" class="mini-badges" title="Deine jüngsten Erfolge"></span>
+    </div>
+    <div class="header-actions">
+      <button id="badgesBtn" title="Erfolge anzeigen">🏅 Erfolge</button>
+      <button id="exportBtn" title="CSV exportieren">CSV</button>
+      <button id="backupBtn" title="Backup erstellen">Backup</button>
+      <input type="file" id="restoreInput" accept=".pushups" hidden />
+      <button id="restoreBtn" title="Backup wiederherstellen">Restore</button>
+      <button id="themeBtn" title="Hell/Dunkel umschalten">🌙</button>
+      <button id="installBtn" hidden>Installieren</button>
+    </div>
   </header>
 
   <main>
@@ -42,13 +52,48 @@
 
     <section>
       <h2>Dein Verlauf</h2>
-      <canvas id="chart" height="140"></canvas>
+      <canvas id="chart" height="180"></canvas>
+      <div class="legend">
+        <span class="dot daily"></span> Täglich
+        <span class="dot avg"></span> Gleitender Schnitt (7 Tage)
+      </div>
+      <div id="tooltip" class="tooltip" hidden></div>
+    </section>
+
+    <section>
+      <h2>Wochenreport</h2>
+      <div class="week-grid">
+        <div>
+          <div class="label">Wochensumme</div>
+          <div class="value" id="weekSum">–</div>
+        </div>
+        <div>
+          <div class="label">Prognose bis 14.06</div>
+          <div class="value" id="forecast">–</div>
+        </div>
+        <div>
+          <div class="label">Empfehlung morgen</div>
+          <div class="value" id="recommend">–</div>
+        </div>
+      </div>
+      <canvas id="weekChart" height="120"></canvas>
     </section>
   </main>
 
   <footer>
     <small>Funktioniert offline. Zu deinem Homescreen hinzufügen für App‑Feeling.</small>
   </footer>
+
+  <!-- Badge Modal -->
+  <div id="badgeModal" class="modal" hidden>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Deine Erfolge</h3>
+        <button id="closeModal">✖</button>
+      </div>
+      <div class="badge-grid" id="badgeGrid"></div>
+    </div>
+  </div>
 
   <script>
     if ('serviceWorker' in navigator) {
